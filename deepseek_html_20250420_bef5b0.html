@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+            overflow: hidden;
+            border: 2px solid #333;
+            border-radius: 5px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        #game-canvas {
+            background-image: url('https://iili.io/3E7Jpse.png');
+            background-size: cover;
+        }
+        
+        #score-display {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+        
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            display: none;
+        }
+        
+        #game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+        
+        #final-score {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+        
+        #restart-btn {
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        #restart-btn:hover {
+            background-color: #45a049;
+        }
+        
+        #pause-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 5px 10px;
+            font-size: 14px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 10;
+        }
+        
+        #pause-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            z-index: 15;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas" width="400" height="600"></canvas>
+        <div id="score-display">0</div>
+        <button id="pause-btn">Pause</button>
+        
+        <div id="pause-screen">
+            <div>Game Paused<br>Click to Resume</div>
+        </div>
+        
+        <div id="game-over">
+            <h2>Game Over</h2>
+            <div id="final-score">Score: 0</div>
+            <button id="restart-btn">Restart</button>
+        </div>
+    </div>
+
+    <script>
+        // Game variables
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const gameOverScreen = document.getElementById('game-over');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const pauseScreen = document.getElementById('pause-screen');
+        
+        // Game state
+        let gameRunning = false;
+        let gamePaused = false;
+        let score = 0;
+        let highScore = 0;
+        
+        // Bird properties
+        const bird = {
+            x: 100,
+            y: 300,
+            width: 40,
+            height: 30,
+            velocity: 0,
+            gravity: 0.5,
+            jumpForce: -10,
+            img: new Image()
+        };
+        bird.img.src = 'https://iili.io/3E7dJgj.png';
+        
+        // Pipes properties
+        const pipes = {
+            width: 60,
+            gap: 150,
+            speed: 2,
+            list: [],
+            img: new Image()
+        };
+        pipes.img.src = 'https://iili.io/3E7d9qu.png';
+        
+        // Game loop variables
+        let lastTime = 0;
+        let animationId = null;
+        
+        // Event listeners
+        canvas.addEventListener('click', handleJump);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') handleJump();
+        });
+        restartBtn.addEventListener('click', restartGame);
+        pauseBtn.addEventListener('click', togglePause);
+        pauseScreen.addEventListener('click', togglePause);
+        
+        // Start the game
+        startGame();
+        
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            scoreDisplay.textContent = score;
+            bird.y = 300;
+            bird.velocity = 0;
+            pipes.list = [];
+            
+            // Create initial pipes
+            for (let i = 0; i < 3; i++) {
+                createPipe(canvas.width + i * 300);
+            }
+            
+            gameOverScreen.style.display = 'none';
+            lastTime = performance.now();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        function gameLoop(timestamp) {
+            if (!gameRunning || gamePaused) return;
+            
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+            
+            update(deltaTime);
+            render();
+            
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        function update(deltaTime) {
+            // Update bird
+            bird.velocity += bird.gravity;
+            bird.y += bird.velocity;
+            
+            // Check if bird hits the ground or ceiling
+            if (bird.y + bird.height > canvas.height || bird.y < 0) {
+                gameOver();
+            }
+            
+            // Update pipes
+            for (let i = pipes.list.length - 1; i >= 0; i--) {
+                pipes.list[i].x -= pipes.speed;
+                
+                // Check for collision with bird
+                if (
+                    bird.x < pipes.list[i].x + pipes.width &&
+                    bird.x + bird.width > pipes.list[i].x &&
+                    (bird.y < pipes.list[i].topHeight || bird.y + bird.height > pipes.list[i].topHeight + pipes.gap)
+                ) {
+                    gameOver();
+                }
+                
+                // Check if bird passed a pipe
+                if (pipes.list[i].x + pipes.width < bird.x && !pipes.list[i].passed) {
+                    pipes.list[i].passed = true;
+                    score++;
+                    scoreDisplay.textContent = score;
+                }
+                
+                // Remove pipes that are off screen
+                if (pipes.list[i].x + pipes.width < 0) {
+                    pipes.list.splice(i, 1);
+                    createPipe();
+                }
+            }
+        }
+        
+        function render() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw background (handled by CSS background-image)
+            
+            // Draw pipes
+            for (const pipe of pipes.list) {
+                // Top pipe
+                ctx.drawImage(
+                    pipes.img,
+                    0, 0, pipes.img.width, pipes.img.height,
+                    pipe.x, 0, pipes.width, pipe.topHeight
+                );
+                
+                // Bottom pipe
+                ctx.drawImage(
+                    pipes.img,
+                    0, 0, pipes.img.width, pipes.img.height,
+                    pipe.x, pipe.topHeight + pipes.gap, pipes.width, canvas.height - pipe.topHeight - pipes.gap
+                );
+            }
+            
+            // Draw bird
+            ctx.save();
+            // Rotate bird based on velocity
+            const rotation = Math.min(Math.max(bird.velocity * 3, -30), 30);
+            ctx.translate(bird.x + bird.width / 2, bird.y + bird.height / 2);
+            ctx.rotate(rotation * Math.PI / 180);
+            ctx.drawImage(
+                bird.img,
+                -bird.width / 2, -bird.height / 2, bird.width, bird.height
+            );
+            ctx.restore();
+        }
+        
+        function createPipe(initialX) {
+            const topHeight = Math.floor(Math.random() * (canvas.height - pipes.gap - 100)) + 50;
+            const x = initialX || canvas.width;
+            
+            pipes.list.push({
+                x,
+                topHeight,
+                passed: false
+            });
+        }
+        
+        function handleJump() {
+            if (!gameRunning) {
+                startGame();
+                return;
+            }
+            
+            if (gamePaused) {
+                togglePause();
+                return;
+            }
+            
+            bird.velocity = bird.jumpForce;
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            
+            finalScoreDisplay.textContent = `Score: ${score}`;
+            gameOverScreen.style.display = 'flex';
+            
+            if (score > highScore) {
+                highScore = score;
+            }
+        }
+        
+        function restartGame() {
+            startGame();
+        }
+        
+        function togglePause() {
+            if (!gameRunning) return;
+            
+            gamePaused = !gamePaused;
+            pauseScreen.style.display = gamePaused ? 'flex' : 'none';
+            
+            if (!gamePaused) {
+                lastTime = performance.now();
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+    </script>
+</body>
+</html>
